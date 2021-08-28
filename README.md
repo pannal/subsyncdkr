@@ -9,4 +9,5 @@ As it requires a lot of dependencies to be installed, this does that using Docke
 This is strictly Linux for now.
 
 Usage: `docker run -it subsyncdkr:latest`
+
 Options: All of the subsync options. The only default set is `--cli`
