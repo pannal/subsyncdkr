@@ -8,8 +8,12 @@ FROM python:3.8-slim-buster AS builder
 WORKDIR /app
 ARG DEBIAN_FRONTEND=noninteractive
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+RUN echo "I am running on $BUILDPLATFORM, building for $TARGETPLATFORM"
+
 # meh.
-#ARG CRYPTOGRAPHY_DONT_BUILD_RUST=1
+ARG CRYPTOGRAPHY_DONT_BUILD_RUST=1
 
 RUN ln -s /usr/bin/dpkg-split /usr/sbin/dpkg-split && ln -s /usr/bin/dpkg-deb /usr/sbin/dpkg-deb && ln -s /bin/tar /usr/sbin/tar && ln -s /bin/rm /usr/sbin/rm
 RUN apt-get update \
@@ -17,15 +21,21 @@ RUN apt-get update \
         apt-utils \
         gcc \
         g++ \
-        build-essential libssl-dev libffi-dev rustc python3-dev cargo git swig libpulse-dev libasound2-dev libsphinxbase3 libsphinxbase-dev libpocketsphinx-dev libavdevice-dev \
+        build-essential libssl-dev libffi-dev \
+        git swig libpulse-dev libasound2-dev  \
+        libsphinxbase3 libsphinxbase-dev \
+        libpocketsphinx-dev libavdevice-dev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install -U pip && git clone https://github.com/sc0ty/subsync.git && cd subsync && cp subsync/config.py.template subsync/config.py
 
-
 # Install any needed packages specified in requirements.txt; build subsync
-RUN pip install --no-binary :all: cryptography && pip install -r subsync/requirements.txt && pip install pyinstaller && pip install ./subsync
+RUN pip install --no-binary :all: "cryptography<3.5" && pip install -r subsync/requirements.txt && pip install pyinstaller && pip install ./subsync
+
+# make sure we have PyInstaller bootloaders for 32bit ARM
+RUN if [ "$TARGETPLATFORM" = "linux/arm/v7" ] ; then git clone https://github.com/pyinstaller/pyinstaller && cd pyinstaller/bootloader && python ./waf distclean all ; fi
+RUN if [ "$TARGETPLATFORM" = "linux/arm/v7" ] ; then cp -r /app/pyinstaller/PyInstaller/bootloader/Linux-32bit-unknown /usr/local/lib/python3.8/site-packages/PyInstaller/bootloader && cp -r /usr/local/lib/python3.8/site-packages/PyInstaller/bootloader/Linux-32bit-unknown /usr/local/lib/python3.8/site-packages/PyInstaller/bootloader/Linux-32bit-arm ; fi
 
 WORKDIR /app/subsync
 
@@ -42,8 +52,7 @@ COPY --from=builder /app/subsync/dist/subsync /app
 RUN ln -s /app/subsync /usr/bin/subsync
 
 # install non-def deps
-RUN apt-get update \
-    && apt-get install -y libdrm-dev libxcb1-dev libgl-dev
+RUN apt-get update && apt-get install -y libdrm-dev libxcb1-dev libgl-dev
 
 # cleanup
 RUN rm -rf /var/lib/apt/lists/*
